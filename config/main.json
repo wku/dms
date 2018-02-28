@@ -1,5 +1,5 @@
 {
 	"username":"user1",
 	"public_key":"user1.pub",
-	"private_key":"user1_priv"
+	"private_key":"user1.priv"
 }

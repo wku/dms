@@ -4,9 +4,12 @@ import socket
 import threading as th
 import time
 import json
+import random
 
 import encrypt
 from parent import parent_class
+from history import History
+from blockchain import Blockchain
 import conf		
 
 class Server(parent_class):
@@ -31,22 +34,10 @@ class Server(parent_class):
 		#	server_name : [ ip , port ]  # database of other peers
 		#
 		self.table_socket  = {}
-		try:
-			self.table_clients = json.loads(conf.conf_dir + conf.conf_clients)
-		except Exception as e:
-			self.log('WARNING: no clients table (%s) : %s'%(conf.conf_dir + conf.conf_clients,e))
-			self.table_clients = {}
-		try:
-			self.servers = json.loads(conf.conf_dir + conf.conf_peers)
-		except Exception as e:
-			self.log('WARNING: no peers table (%s) : %s'%(conf.conf_dir + conf.conf_clients,e))
-			self.servers = {}
+		self.blockchain = Blockchain()
 
-		#
-		# list of msgs that cannot be send at the moment as there are not peer public key 
-		# username : [ msg0 , msg1 , ... ]
-		#
-		self.promise = {}
+		self.network_state = 0
+		self.history = History()
 
 	def __del__(self):
 		try:
@@ -54,15 +45,18 @@ class Server(parent_class):
 		except:
 			pass
 
-	def save_cfg(self):
-		try:
-			open(conf.conf_dir + conf.conf_clients,'w').write(json.dumps(self.table_clients))
-		except Exception as e:
-			self.log('WARNING: couldn\'t save clients table to %s : %s'%(conf.conf_dir + conf.conf_clients,e))
-		try:
-			open(conf.conf_dir + conf.conf_peers,'w').write(json.dumps(self.servers))
-		except Exception as e:
-			self.log('WARNING: couldn\'t save peers table to %s : %s'%(conf.conf_dir + conf.conf_peers,e))
+
+	def generate_body_id(self):
+		def random_item(az):
+			i = int(random.random()*(len(az)-1))
+			return az[i]
+		CHARS =  ''
+		for i in ( range(65,91) + range(48,58) + range(97,123) ):
+			CHARS += chr(i)
+		st = ''
+		for i in range(10):
+			st += random_item(CHARS)
+		return st
 
 	#
 	# create listening socket
@@ -145,13 +139,13 @@ class Server(parent_class):
 	#
 	# send msg in plaintext to peer
 	#
-	def send_2lv(self,peer,msg):
+	def send_2lv(self,peer,obj):
 		pass # FIXME
 
 	#
 	# recv msg from peer & decrypt it 
 	#
-	def recv_2lv(self,peer,msg):
+	def recv_2lv(self):
 		pass # FIXME
 
 
@@ -159,44 +153,87 @@ class Server(parent_class):
 	##   THIRD LEVEL OF DMS PROTOCOL    ##
 	######################################
 
-	#
-	# should send request for user's public key
-	# 
-	def request_key(self,username):
-		pass # FIXME
+	def crypt_and_send(body_obj):
+		peer = body_obj['to']
+		if self.blockchain.peer_status(peer) != None: 
+			pub = self.blockchain.get_key(peer)
+			pass # FIXME
 
-
+			return True
+		else:
+			return False
+	
 	#
 	# registrate new user
 	#
 	def registrate(self,username):
+		pass # FIXME
+
+	# 
+	# gets 2lv package and decide to reg or auth
+	# 
+	def auth_ot_reg(self,data):
 		pass # FIXME
 		
 	#
 	# send message to user
 	#
 	def send_user_message(self,username,message):
-		# FIXME
-		if username not in self.table_clients:
-			self.make_promise(username,message)
-		else:
-			pass # FIXME
+		pass # FIXME
 
 	#####################################
 	##              OTHERS             ##
 	#####################################
 
-	def make_promise(self,username,message):
-		if username not in self.promise:
-			self.promise[username] = [message]
-		else:
-			self.promise[username].append(message)
-		self.request_key(username)
 	#
 	# handle single connection
 	#
 	def connection_handle(self,conn,addr):
 		self.log("%s _ %s"%(conn,addr))
+		SHOULD_BE_OPENED = True
+		while SHOULD_BE_OPENED:
+			send_box = []
+			try:
+				package = self.recv_2lv()
+				_from	= package['from']
+				_to		= package['to']
+				_data	= package['data']
+				_flow	= package['flow-controll']
+				
+				AUTH_REG = _flow % (2**0) > 0 # auth or registrate
+				SHOULD_BE_OPENED = _flow % (2**1) == 0 # close connection
+				if (_flow % (2**2+2**3)) >> 2 != self.network_state:
+					pass # should do s0mething
+
+				if AUTH_REG:
+					AUTH_REG = not self.auth_ot_reg(_data)
+				if AUTH_REG:
+					for body_object in _data:
+						body_id = body_object['body-id']
+						data = body_object['data']
+						to = body_object['to']
+						if not self.history.exists(body_id):
+							self.history.add(body_id)
+							if to == self.my_name:
+								self.third_level_handler(data)
+							else:
+								obj = {
+									'from':self.my_name,
+									'to':to,
+									'data':data
+								}
+								send_box.append(obj)
+			except Exception as e:
+				self.log('ERROR: handler <%s> %s'%(addr,e))
+			finally:
+				flow = 0x0C & _flow
+				for body_obj in send_box:
+					body_obj['flow'] = _flow
+					self.crypt_and_send(body_obj)
+		conn.close()
+
+
+
 
 	#
 	# main loop

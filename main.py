@@ -1,6 +1,10 @@
 #!/usr/bin/env python3.5
 import sys
+import json
+
 from server import Server
+import encrypt
+import conf
 
 HELP_MSG = '''
                                 +-----------+                                 .
@@ -8,22 +12,37 @@ HELP_MSG = '''
                                 +-----------+
 
                      Decentralized Messaging System
-    $ python3.5 main.py [-h|--help]
+    $ python3.5 main.py <Command> [ <Flag> ]
+    
+    Command:
+      --server                    - Запсутить сервер
+      --gen-keypair               - Сгенерировать пару ключей для
 
     Flags:
-      --no-stdout                 - No logs to stdout
-      --no-log                    - No logs to log file
-      -h | --help                 - See this message again
+      -h | --help                 - Увидеть это сообщение еще раз
+      --no-stdout                 - Не выводить лог в stdou
+      --no-log                    - Не записывать лог в logfile
+      --client                    - Запустить дополнительно клиентскую часть
 
-    src: https://bitbicket.org/riniyar8/dmz.git
+    src: https://bitbicket.org/riniyar8/dms.git
 '''
 
+def generate_pair():
+	priv,pub = encrypt.generate_RSA_key()
+	priv,pub = encrypt.export_keys(priv,pub)
+	open(conf.key_dir + json.load(open(conf.conf_dir + conf.conf_main))['private_key'],'wb').write(priv)
+	open(conf.key_dir + json.load(open(conf.conf_dir + conf.conf_main))['public_key'],'wb').write(pub)
+
 def main():
-	sv = Server(mcfg)
+	sv = Server()
 	sv.run()
 
 if __name__ == '__main__':
 	if ('-h' in sys.argv[1:]) or ('--help' in sys.argv[1:]):
 		print(HELP_MSG)
-	else:
+	elif '--gen-keypair' in sys.argv[1:]:
+		generate_pair()
+	elif '--server' in sys.argv[1:]:
 		main()
+	else:
+		print('ERROR: expected command. Try -h for more info')

@@ -14,13 +14,23 @@ def generate_RSA_key(x=4096):
 #
 # export keys
 # return ( private , public ) # both bytes
-# in case of error return None
+# in case of error return None , None
 #
 def export_keys(private_key,public_key):
 	try:
 		return ( private_key.exportKey('PEM') , public_key.exportKey('PEM') )
 	except Exception as e:
-		return None
+		return None , None
+
+#
+# import keys
+# return ( private , public ) # both RSA.keyobj
+# in case of error raise Exception
+#
+def import_keys(private_filename,public_filename):
+	private = RSA.importKey(open(private_filename).read())
+	public  = RSA.importKey(open(public_filename).read())
+	return private , public
 
 #
 # decrypt message using private_key

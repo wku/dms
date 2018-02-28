@@ -1,0 +1,10 @@
+Tue Dec  5 15:53:31 2017 -:- mainloop: name 'connection_handle' is not defined 
+Tue Dec  5 16:42:33 2017 -:- <socket.socket fd=4, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=0, laddr=('127.0.0.1', 8000), raddr=('127.0.0.1', 62036)> _ ('127.0.0.1', 62036) 
+Tue Dec  5 16:43:14 2017 -:- <socket.socket fd=5, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=0, laddr=('127.0.0.1', 8000), raddr=('127.0.0.1', 62039)> _ ('127.0.0.1', 62039) 
+Tue Dec  5 16:43:14 2017 -:- mainloop: list index out of range 
+Tue Dec  5 16:43:33 2017 -:- <socket.socket fd=4, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=0, laddr=('127.0.0.1', 8000), raddr=('127.0.0.1', 62040)> _ ('127.0.0.1', 62040) 
+Tue Dec  5 16:43:33 2017 -:- mainloop: list index out of range 
+Tue Dec  5 16:46:01 2017 -:- Finish working 
+Tue Dec  5 16:46:03 2017 -:- Finish working 
+Tue Dec  5 16:46:05 2017 -:- Finish working 
+Tue Dec  5 16:46:07 2017 -:- Finish working 

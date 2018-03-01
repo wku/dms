@@ -22,7 +22,7 @@ class History:
 	# return True if objid already in history
 	#
 	def exists(self,objid):
-		return objid in self.__history:
+		return objid in self.__history
 
 	#
 	# stop thread for cleaning history
@@ -38,7 +38,7 @@ class History:
 	#
 	def start(self):
 		self.__WORK = True
-		self.thread = th.Thread(targert=self.__filter,args=[])
+		self.thread = th.Thread(target=self.__filter,args=[])
 		self.thread.start()
 
 	#

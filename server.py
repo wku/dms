@@ -5,11 +5,12 @@ import threading as th
 import time
 import json
 import random
+import binascii as asc
 
 import encrypt
 from parent import parent_class
 from history import History
-from blockchain import Blockchain
+from blockchain import Block,Blockchain
 import conf		
 
 class Server(parent_class):
@@ -28,12 +29,14 @@ class Server(parent_class):
 
 		#
 		# runtime tables:
-		#	socket : client              # current active connections
-		# tables from database:
-		#	client : key                 # database of public keys
-		#	server_name : [ ip , port ]  # database of other peers
+		# current active connections
 		#
-		self.table_socket  = {}
+		self.__client_socket  = {} 
+		self.__socket_clinet  = {}
+		
+		#
+		# databes of existing users and their keys
+		#
 		self.blockchain = Blockchain()
 
 		self.network_state = 0
@@ -137,32 +140,74 @@ class Server(parent_class):
 	#######################################
 
 	#
-	# send msg in plaintext to peer
+	# takes dict (2lv), covert to str , crypt
+	# and send it to peer
 	#
-	def send_2lv(self,peer,obj):
-		pass # FIXME
+	def send_2lv(self,transport_message):
+		peer = transport_message['to']
+		if self.blockchain.peer_status(peer) != None: 
+			pub = self.blockchain.get_key(peer)
+			self.__send(json.dumps(transport_message).encode())
+			return True
+		else:
+			return False
 
 	#
 	# recv msg from peer & decrypt it 
+	# return transport-message (dict)
 	#
-	def recv_2lv(self):
-		pass # FIXME
+	def recv_2lv(self,conn):
+		try:
+			transport_message = json.loads(self.__recv(conn,self.private))
+			return transport_message
+		except Exception as e:
+			self.log('ERROR: recv_2lv: %s'%e)
 
 
 	######################################
 	##   THIRD LEVEL OF DMS PROTOCOL    ##
 	######################################
 
-	def crypt_and_send(body_obj):
-		peer = body_obj['to']
-		if self.blockchain.peer_status(peer) != None: 
-			pub = self.blockchain.get_key(peer)
-			pass # FIXME
+	
+	#
+	# takes pub-key and dict , convert to str , encrypt using pub-key , decode to str and return str
+	#
+	def __3lv_crypt(self,pub,dd):
+		res = asc.b2a_base64(encrypt.encrypt_data(pub,json.dumps(dd)))
+		if type(res) == bytes:
+			res = res.decode()
+		return res
+	
+	#
+	# takes str in base64 , encode , decrypt , convert to dict
+	#
+	def __3lv_norm(self,st):
+		if type(st) == str:
+			st = st.encode()
+		res = encrypt.decrypt_data(self.private,asc.a2b_base64(st))
+		if type(res) == bytes:
+			res = res.decode()
+		return json.loads(res)
 
-			return True
+	#
+	# return True if msg send
+	# or False in case of error
+	#
+	def __send_3lv_(self,peer,body_obj):
+		if self.blockchain.exists(peer):
+			pub = self.blockchain.get_key(peer)
+			body_obj['sign'] = encrypt.data_to_signature(self.private,encrypt.md5(json.dumps(body_obj)))
+			self.__3lv_crypt(pub,body_obj)
+			obj = {
+				'from':self.my_name,
+				'to':peer,
+				'flow-controll':(self.network_state << 2),
+				'data':[body_obj]
+			}
+			return self.send_2lv(obj)
 		else:
 			return False
-	
+
 	#
 	# registrate new user
 	#
@@ -171,30 +216,138 @@ class Server(parent_class):
 
 	# 
 	# gets 2lv package and decide to reg or auth
+	# return True if user authorized or registrated
+	# or False in case of error
 	# 
 	def auth_ot_reg(self,data):
 		pass # FIXME
+		return True
 		
 	#
 	# send message to user
 	#
 	def send_user_message(self,username,message):
+		bobj = {
+			'from':self.my_name,
+			'message':message
+		}
+		self.__send_3lv_(username,bobj)
+
+	def db_update_request(self):
 		pass # FIXME
+
+	#
+	# handler for part of messages
+	#
+	def __3lv_error_part_handler(self,hightest_msg,body_id):
+		self.log('ERROR: [%s] [errnum: %s] %s'%(hightest_msg['data']['from'],hightest_msg['data']['body_id'],hightest_msg['data']['error_num'],hightest_msg['data']['error_msg']))
+	
+	#
+	# handler for part of messages
+	#
+	def __3lv_user_part_handler(self,hightest_msg,body_id):
+		if hightest_msg['id'] == 1: # incoming message
+			peer = hightest_msg['data']['from']
+			msg  = hightest_msg['data']['message']
+			self.extra('[%s][%s] %s -- NEW MSG -- %s'%(time.ctime(),body_id,peer,msg))
+
+			reply = {
+				'from':self.my_name,
+				'body-id':body_id
+			}
+			self.__send_3lv_(peer,reply)
+		elif hightest_msg['id'] == 2: # delivered
+			peer = hightest_msg['data']['from']
+			bid  = hightest_msg['data']['body-id']
+			self.extra('[%s][%s] %s -- MSG DELIVERED [%s] '%(time.ctime(),body_id,peer,bid))
+		elif hightest_msg['id'] == 3: # delivered
+			peer = hightest_msg['data']['from']
+			bid  = hightest_msg['data']['body-id']
+			self.extra('[%s][%s] %s -- MSG READ [%s] '%(time.ctime(),body_id,peer,bid))
+	
+	#
+	# handler for part of messages
+	#
+	def __3lv_blckchn_part_handler(self,hightest_msg,body_id):
+		pass # FIXME
+	
+	#
+	# handler for part of messages
+	#
+	def __3lv_vote_part_handler(self,hightest_msg,body_id):
+		pass # FIXME
+	
+	#
+	# handler for part of messages
+	#
+	def __3lv_sysctl_part_handler(self,hightest_msg,body_id):
+		pass # FIXME
+
+	#
+	# handler for body-object (b64,str)
+	#
+	def third_level_handler(self,_body_obj):
+		body_id = _body_obj['body-id']
+		if self.history.exists(body_id):
+			return
+		self.history.add(body_id)
+		body_obj = self.__3lv_norm(_body_obj['data'])
+		if encrypt.verify_signature(self.blockchain.get_key(body_obj['from']),body_obj.pop('sign'),encrypt.md5(json.dumps(body_obj)))
+			if body_obj['part']   == conf.ERROR_PART_ID:
+				self.__3lv_error_part_handler(body_obj,body_id)
+			elif body_obj['part'] == conf.USER_PART_ID:
+				self.__3lv_user_part_handler(body_obj,body_id)
+			elif body_obj['part'] == conf.BLCKCHN_PART_ID:
+				self.__3lv_blckchn_part_handler(body_obj,body_id)
+			elif body_obj['part'] == conf.VOTE_PART_ID:
+				self.__3lv_vote_part_handler(body_obj,body_id)
+			elif body_obj['part'] == conf.SYSCTL_PART_ID:
+				self.__3lv_sysctl_part_handler(body_obj,body_id)
+		else:
+			self.log('ERROR: incoming bobj verificetion failed')
 
 	#####################################
 	##              OTHERS             ##
 	#####################################
 
 	#
+	#
+	#
+	def upd_blockchain(self,addr_info):
+		host = addr_info[0]
+		port = addr_info[1]
+		args = sys.argv[1:]
+		i = args.index('-k')
+		if i <= 0:
+			self.log('ERROR: upd-blckchn: expected \'-k\'')
+			return
+		pub = encrypt.import_public_key_from_str(open(args.pop(i)).read())
+		i = args.index('-l')
+		if i <= 0:
+			self.log('ERROR: upd-blckchn: expected \'-l\'')
+			return
+		username = args.pop(i)
+		conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM):
+		conn.connect((host, port))
+		self.__client_socket[username] = conn
+		self.__socket_clinet[str(conn)]= username
+		self.blockchain.user_keys[username] = pub
+		self.blockchain.servers[user_keys] = [host,port]
+		self.db_update_request()
+
+
+
+	#
 	# handle single connection
 	#
 	def connection_handle(self,conn,addr):
 		self.log("%s _ %s"%(conn,addr))
+		self.__socket_clinet[str(conn)] = None
 		SHOULD_BE_OPENED = True
 		while SHOULD_BE_OPENED:
-			send_box = []
+			send_box = {}
 			try:
-				package = self.recv_2lv()
+				package = self.recv_2lv(conn) # Transport-Meesage
 				_from	= package['from']
 				_to		= package['to']
 				_data	= package['data']
@@ -208,28 +361,32 @@ class Server(parent_class):
 				if AUTH_REG:
 					AUTH_REG = not self.auth_ot_reg(_data)
 				if AUTH_REG:
+					if self.__socket_clinet[str(conn)] == None:
+						self.__socket_clinet[str(conn)] = _from
+						self.__socket_clinet[_from] = str(conn)
 					for body_object in _data:
-						body_id = body_object['body-id']
 						data = body_object['data']
 						to = body_object['to']
-						if not self.history.exists(body_id):
-							self.history.add(body_id)
-							if to == self.my_name:
-								self.third_level_handler(data)
-							else:
+						if to == self.my_name:
+							self.third_level_handler(data)
+						else:
+							if to not in send_box:
 								obj = {
 									'from':self.my_name,
 									'to':to,
-									'data':data
+									'data':[body_object]
 								}
-								send_box.append(obj)
+								send_box[to] = obj
+							else:
+								send_box[to]['data'].append(body_object)
 			except Exception as e:
 				self.log('ERROR: handler <%s> %s'%(addr,e))
 			finally:
 				flow = 0x0C & _flow
-				for body_obj in send_box:
-					body_obj['flow'] = _flow
-					self.crypt_and_send(body_obj)
+				for to in send_box:
+					package = send_box[to]
+					package['flow'] = _flow
+					self.send_2lv(package)
 		conn.close()
 
 
@@ -276,6 +433,7 @@ class Server(parent_class):
 					time.sleep(delay)
 		except KeyboardInterrupt as e:
 			self.log('Finish working')
+			self.blockchain.save()
 
 	#####################################################
 	##                 USERS INTERFACE                 ##
@@ -286,7 +444,7 @@ class Server(parent_class):
 	#
 	def fork_client(self):
 		def client(self):
-			CMDS = '''ENTER COMMAND:\n0 - exit\n1 - send msg\n2 - registrate new user\n'''
+			CMDS = '''ENTER COMMAND:\n0 - exit\n1 - send msg\n'''
 			while True:
 				try:
 					cmd = int(input(CMDS))
@@ -297,13 +455,10 @@ class Server(parent_class):
 						username = input('peer-name: ')
 						msg = input('message: ')
 						self.send_user_message(username,msg)
-					elif cmd == 2:
-						username = input('new username: ')
-						self.registrate(username)
 					else:
 						raise RuntimeError('unknown command %s'%cmd)
-				except:
-					print('ERROR client: %s'%e)
+				except Exception as e:
+					self.log('ERROR client: %s'%e)
 		_t = th.Thread(target=client,args=[self])
 		_t.start()
 		self.threads.append(_t)

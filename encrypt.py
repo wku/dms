@@ -1,6 +1,7 @@
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Hash import SHA512,SHA256,MD5
 
 #
 # Generate pare of RSA keys
@@ -33,6 +34,14 @@ def import_keys(private_filename,public_filename):
 	return private , public
 
 #
+# import public key from str
+# return RSA.keyobject
+# in case of error raise Exception
+#
+def import_public_key_from_str(public_key):
+	return RSA.importKey(public_key)
+
+#
 # decrypt message using private_key
 #
 def decrypt_data(private_key,message):
@@ -60,4 +69,26 @@ def data_to_signature(private_key,data):
 def verify_signature(public_key,signature,expected_msg):	 	
 	return public_key.verify(expected_msg, signature)
 
+#
+# md5 hash
+#
+def md5(bytes_data):
+	h = MD5.new()
+	h.update(bytes_data)
+	return h.hexdigest()
 
+#
+# sha256 hash
+#
+def sha256(bytes_data):
+	h = SHA256.new()
+	h.update(bytes_data)
+	return h.hexdigest()
+
+#
+# sha512 hash
+#
+def sha512(bytes_data):
+	h = SHA512.new()
+	h.update(bytes_data)
+	return h.hexdigest()

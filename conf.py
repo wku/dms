@@ -27,3 +27,17 @@ delay					=	0.5
 History_clean_timeout	=	2.0
 # how long in seconds we should keep objids in history
 History_duration		=	24*3600
+
+##################################################
+###           PROTOCOL CONFIGURATIONS          ###
+##################################################
+# error-part-id (int)
+ERROR_PART_ID			=	0
+# user-part-id (int)
+USER_PART_ID			=	1
+# blockchain-part-id (int)
+BLCKCHN_PART_ID			=	3
+# vote-part-id (int)
+VOTE_PART_ID			=	4
+# syscontroll-part-id
+SYSCTL_PART_ID			=	5

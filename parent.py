@@ -16,3 +16,8 @@ class parent_class:
 	def debug(self,msg):
 		if '--debug' in sys.argv[1:]:
 			print('DEBUG: %s'%str(msg))
+
+	def extra(self,msg):
+		if '--extra-output' in sys.argv[1:]:
+			print('extra: %s'%str(msg))
+

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.6
 import sys
 import os
 import time
@@ -14,7 +14,7 @@ HELP_MSG = '''
                                 +-----------+
 
                        Decentralized Messaging System
-    $ python3.5 main.py <Command> [ <Flag> ]
+    $ python3.6 main.py <Command> [ <Flag> ]
     
     Command:
       --init

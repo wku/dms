@@ -14,7 +14,7 @@ from blockchain import Block,Blockchain
 import conf		
 
 class Server(parent_class):
-	def __init__(self):
+	def __init__(self,load_mode='demo'):
 		super(Server, self).__init__()
 		self.threads = []
 		self.open_port()
@@ -24,7 +24,11 @@ class Server(parent_class):
 		#
 		mcfg = json.load(open(conf.conf_dir + conf.conf_main))
 		self.my_name = mcfg['username']
-		self.private,self.public = encrypt.import_keys(conf.key_dir+mcfg['private_key'],conf.key_dir+mcfg['public_key'])
+		try:
+			self.private,self.public = encrypt.import_keys(conf.key_dir+mcfg['private_key'],conf.key_dir+mcfg['public_key'])
+		except Exception as e:
+			self.log('cannot find keys: (%s, %s) %s'%(conf.key_dir+mcfg['private_key'],conf.key_dir+mcfg['public_key'],e))
+			sys.exit()
 
 
 		#
@@ -40,7 +44,8 @@ class Server(parent_class):
 		self.blockchain = Blockchain()
 
 		self.network_state = 0
-		self.history = History()
+		if load_mode == 'full-load':
+			self.history = History()
 
 	def __del__(self):
 		try:
@@ -211,7 +216,8 @@ class Server(parent_class):
 	#
 	# registrate new user
 	#
-	def registrate(self,username):
+	def registrate(self):
+		username = self.my_name
 		pass # FIXME
 
 	# 
@@ -220,21 +226,31 @@ class Server(parent_class):
 	# or False in case of error
 	# 
 	def auth_ot_reg(self,data):
-		pass # FIXME
-		return True
+		return True # if he is not Vasya then we will not understand our reply
 		
 	#
 	# send message to user
 	#
 	def send_user_message(self,username,message):
 		bobj = {
-			'from':self.my_name,
-			'message':message
+			'part':conf.USER_PART_ID,
+			'id':1,
+			'data':{
+				'from':self.my_name,
+				'message':message
+			}
 		}
 		self.__send_3lv_(username,bobj)
 
-	def db_update_request(self):
-		pass # FIXME
+	def db_update_request(self,username):
+		bobj = {
+			'part':conf.BLCKCHN_PART_ID,
+			'id':1, # ask for number of blocks and last hash
+			'data':{
+				'from':self.my_name
+			}
+		}
+		self.__send_3lv_(username,bobj)
 
 	#
 	# handler for part of messages
@@ -250,10 +266,13 @@ class Server(parent_class):
 			peer = hightest_msg['data']['from']
 			msg  = hightest_msg['data']['message']
 			self.extra('[%s][%s] %s -- NEW MSG -- %s'%(time.ctime(),body_id,peer,msg))
-
 			reply = {
-				'from':self.my_name,
-				'body-id':body_id
+				'part':conf.USER_PART_ID,
+				'id':1,
+				'data':{
+					'from':self.my_name,
+					'body-id':body_id
+				}
 			}
 			self.__send_3lv_(peer,reply)
 		elif hightest_msg['id'] == 2: # delivered
@@ -269,8 +288,85 @@ class Server(parent_class):
 	# handler for part of messages
 	#
 	def __3lv_blckchn_part_handler(self,hightest_msg,body_id):
-		pass # FIXME
+		reply = None
+		peer = None
+		if hightest_msg['id'] == 1: # ask for number of blocks and last hash
+			peer = hightest_msg['data']['from']
+			self.extra('[%s][%s] %s -- BLCKCHN 1 -- %s'%(time.ctime(),body_id,peer,msg))
+			reply = {
+				'part':conf.BLCKCHN_PART_ID,
+				'id':2,
+				'data':{
+					'from':self.my_name,
+					'count':self.blockchain.count(),
+					'hash':self.blockchain.last_hash(),
+				}
+			}
+		elif hightest_msg['id'] == 2: # we get number of blocks (count) and last hash (hash)
+			peer = hightest_msg['data']['from']
+			self.extra('[%s][%s] %s -- BLCKCHN 2 -- %s'%(time.ctime(),body_id,peer,msg))
+			count 		= hightest_msg['data']['count'] 
+			last_hash 	= hightest_msg['data']['last_hash']
+			if count > self.blockchain.count():
+				reply = { # ask for blocks
+					'part':conf.BLCKCHN_PART_ID,
+					'id':3 ,
+					'data':{
+						'from':self.my_name,
+						'max':self.blockchain.count(),
+						'min':count,
+					}
+				}
+		elif hightest_msg['id'] == 3: # we get request for blocks from (min) till (max)
+			peer = hightest_msg['data']['from']
+			self.extra('[%s][%s] %s -- BLCKCHN 3 -- %s'%(time.ctime(),body_id,peer,msg))
+			_min = hightest_msg['data']['min'] 
+			_max = hightest_msg['data']['max']
+			blocks = []
+			for i in range(_min,_max):
+				blocks.append(self.blockchain.blocks[i]._export())
+			reply = { # ask for blocks
+				'part':conf.BLCKCHN_PART_ID,
+				'id':4,
+				'data':{
+					'from':self.my_name,
+					'blocks':blocks
+				}
+			}
+		elif hightest_msg['id'] == 4: # we get list of blocks
+			peer = hightest_msg['data']['from']
+			self.extra('[%s][%s] %s -- BLCKCHN 4 -- %s'%(time.ctime(),body_id,peer,msg))
+			blocks = hightest_msg['data']['blocks'] 
+			try:
+				for i in blocks:
+					blck = Block()
+					blck._import(i)
+					self.blockchain.add_block(blck)
+			except Exception as e:
+				self.log('ERROR : incoming blocks damaged %s'%e)
+		if self.reply != None:
+			self.__send_3lv_(peer,reply)
 	
+	#
+	# handler for part of messages
+	#
+	def __3lv_login_key_service_handler(self,hightest_msg,body_id):
+		reply = None
+		peer = None
+		if hightest_msg['id'] == 1: # registrate new user
+			peer = hightest_msg['data']['from']
+			key = encrypt.import_public_key_from_str(hightest_msg['data']['key'])
+			if self.blockchain.add_new_user(hightest_msg['data']['key'],peer,self.my_name,self.private):
+				reply = { # ask for blocks
+					'part':conf.LOGIN_KEY_SERVICE,
+					'id':2, # success ful result
+					'data':{
+						'from':self.my_name,
+						'result':'success'
+					}
+				}
+		if self.reply != None:
+			self.__send_3lv_(peer,reply)
 	#
 	# handler for part of messages
 	#
@@ -281,30 +377,39 @@ class Server(parent_class):
 	# handler for part of messages
 	#
 	def __3lv_sysctl_part_handler(self,hightest_msg,body_id):
+		#
+		# don't know why i create this handler ._.
+		#
 		pass # FIXME
 
 	#
 	# handler for body-object (b64,str)
 	#
 	def third_level_handler(self,_body_obj):
-		body_id = _body_obj['body-id']
-		if self.history.exists(body_id):
-			return
-		self.history.add(body_id)
-		body_obj = self.__3lv_norm(_body_obj['data'])
-		if encrypt.verify_signature(self.blockchain.get_key(body_obj['from']),body_obj.pop('sign'),encrypt.md5(json.dumps(body_obj)))
-			if body_obj['part']   == conf.ERROR_PART_ID:
-				self.__3lv_error_part_handler(body_obj,body_id)
-			elif body_obj['part'] == conf.USER_PART_ID:
-				self.__3lv_user_part_handler(body_obj,body_id)
-			elif body_obj['part'] == conf.BLCKCHN_PART_ID:
-				self.__3lv_blckchn_part_handler(body_obj,body_id)
-			elif body_obj['part'] == conf.VOTE_PART_ID:
-				self.__3lv_vote_part_handler(body_obj,body_id)
-			elif body_obj['part'] == conf.SYSCTL_PART_ID:
-				self.__3lv_sysctl_part_handler(body_obj,body_id)
-		else:
-			self.log('ERROR: incoming bobj verificetion failed')
+		body_id = None
+		try:
+			body_id = _body_obj['body-id']
+			if self.history.exists(body_id):
+				return
+			self.history.add(body_id)
+			body_obj = self.__3lv_norm(_body_obj['data'])
+			if encrypt.verify_signature(self.blockchain.get_key(body_obj['from']),body_obj.pop('sign'),encrypt.md5(json.dumps(body_obj))):
+				if body_obj['part']   == conf.ERROR_PART_ID:
+					self.__3lv_error_part_handler(body_obj,body_id)
+				elif body_obj['part'] == conf.USER_PART_ID:
+					self.__3lv_user_part_handler(body_obj,body_id)
+				elif body_obj['part'] == conf.LOGIN_KEY_SERVICE:
+					self.__3lv_login_key_service_handler(body_obj,body_id)
+				elif body_obj['part'] == conf.BLCKCHN_PART_ID:
+					self.__3lv_blckchn_part_handler(body_obj,body_id)
+				elif body_obj['part'] == conf.VOTE_PART_ID:
+					self.__3lv_vote_part_handler(body_obj,body_id)
+				elif body_obj['part'] == conf.SYSCTL_PART_ID:
+					self.__3lv_sysctl_part_handler(body_obj,body_id)
+			else:
+				self.log('ERROR: incoming bobj verificetion failed')
+		except Exception as e:
+			self.log('ERROR: 3lv handler [%s] : %s'%(body_id,e))
 
 	#####################################
 	##              OTHERS             ##
@@ -327,13 +432,13 @@ class Server(parent_class):
 			self.log('ERROR: upd-blckchn: expected \'-l\'')
 			return
 		username = args.pop(i)
-		conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM):
+		conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		conn.connect((host, port))
 		self.__client_socket[username] = conn
 		self.__socket_clinet[str(conn)]= username
 		self.blockchain.user_keys[username] = pub
 		self.blockchain.servers[user_keys] = [host,port]
-		self.db_update_request()
+		self.db_update_request(username)
 
 
 
@@ -438,6 +543,20 @@ class Server(parent_class):
 	#####################################################
 	##                 USERS INTERFACE                 ##
 	#####################################################
+
+	#
+	# 
+	#
+	def self_registrate(self):
+		username = self.my_name
+		reg_data = {
+			'type':'user',
+			'name':username,
+			'key':encrypt.export_key(self.public).decode(),
+			'address':[conf.host,conf.port]
+		} 
+		self.blockchain.reset()
+		return self.blockchain.add_my_block(Block(n=0,data=json.dumps(reg_data),prev_hash='',hash_type='md5'),username,self.private)
 
 	#
 	# here will be forked thread for working with user

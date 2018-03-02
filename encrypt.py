@@ -20,8 +20,19 @@ def generate_RSA_key(x=4096):
 def export_keys(private_key,public_key):
 	try:
 		return ( private_key.exportKey('PEM') , public_key.exportKey('PEM') )
-	except Exception as e:
+	except:
 		return None , None
+
+#
+# export single (any) key
+# get RSA.keyobj , return bytes
+# or None in case of error
+#
+def export_key(key):
+	try:
+		return key.exportKey('PEM')
+	except:
+		return False
 
 #
 # import keys

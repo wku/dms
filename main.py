@@ -1,5 +1,7 @@
-#!/usr/bin/env python3.5
+#!/usr/bin/env python3
 import sys
+import os
+import time
 import json
 
 from server import Server
@@ -11,23 +13,30 @@ HELP_MSG = '''
                                 |  D  M  S  |
                                 +-----------+
 
-                     Decentralized Messaging System
+                       Decentralized Messaging System
     $ python3.5 main.py <Command> [ <Flag> ]
     
     Command:
-      --server
-          Запсутить сервер
+      --init
+          Создает необходимые директории и необходимые файлы кроме пары 
+          ключей пользователя
 
       --gen-keypair
-          Сгенерировать пару ключей
+          Генерирует новую пару ключей
 
       --registrate
-          Регистрирует пользователя. Первоначально надо сгенерировать ключи.
+          Регистрирует пользователя на удаленном сервере
+
+      --self-registrate
+          Регистрирует пользователя, как первый блок в БД
 
       --upd-blckchn=<host>:<port>
           Обновить базу данных (блокчейн) от конкретного узла. При этом 
           необходимо использовать -k для указания публичного ключа узла -l для
           указания логина узла
+
+      --server
+          Запсутить сервер
 
     Flags:
       -h | --help
@@ -65,8 +74,23 @@ def generate_pair():
 	open(conf.key_dir + json.load(open(conf.conf_dir + conf.conf_main))['private_key'],'wb').write(priv)
 	open(conf.key_dir + json.load(open(conf.conf_dir + conf.conf_main))['public_key'],'wb').write(pub)
 
+def init():
+	for i in [conf.conf_dir,conf.blockchain_dir,conf.key_dir]:
+		try:
+			os.mkdir(i)
+		except Exception as e:
+			print('ERROR: making directory %s : %s'%(i,e))
+	time.sleep(1)
+	username = input('\nYour new login:')
+	open(conf.conf_dir + conf.conf_main,'w').write(json.dumps({
+			"username":username,
+			"public_key":"%s.pub"%(username),
+			"private_key":"%s.priv"%(username)
+		}))
+
+
 def main():
-	sv = Server()
+	sv = Server('full-load')
 	sv.run()
 
 if __name__ == '__main__':
@@ -77,8 +101,12 @@ if __name__ == '__main__':
 	elif '--server' in sys.argv[1:]:
 		main()
 	elif '--registrate' in sys.argv[1:]:
-		Server().registrate(input('new username: '))
+		Server().registrate()
+	elif '--self-registrate' in sys.argv[1:]:
+		print('Success: %s'%Server().self_registrate())
 	elif len(list(filter(lambda x:x.startswith('--upd-blckchn='),sys.argv[1:])))>0:
 		Server().upd_blockchain(list(filter(lambda x:x.startswith('--upd-blckchn='),sys.argv[1:]))[0][len('--upd-blckchn='):].split(':'))
+	elif '--init' in sys.argv[1:]:
+		init()
 	else:
 		print('ERROR: expected command. Try -h for more info')

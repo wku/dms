@@ -2,15 +2,16 @@
 import json
 import conf
 import encrypt
-
+import traceback
+from parent import parent_class
 #
 # class for one block
 #
-class Block:
+class Block(parent_class):
 	#
-	# n 		- block's number
-	# data 		- blocks data
-	# prev_hash - hash of previos block
+	# n 		- block's number (int)
+	# data 		- blocks data (str)
+	# prev_hash - hash of previos block (str)
 	#
 	def __init__(self,n=None,data=None,prev_hash=None,hash_type='md5'):
 		self.__n = n
@@ -28,7 +29,7 @@ class Block:
 		if self.__n == None:
 			raise RuntimeError('block should be initialized')
 		obj = {
-			'n':self.n,
+			'n':self.__n,
 			'prev-hash':self.__prev_hash,
 			'data':self.__data,
 			'hash-type':self.__hash_type,
@@ -113,7 +114,7 @@ class Block:
 #
 # class for whole blockchain
 #
-class Blockchain:
+class Blockchain(parent_class):
 	def __init__(self):
 		self.dir = conf.blockchain_dir
 		self.blocks = {}
@@ -136,51 +137,60 @@ class Blockchain:
 
 
 	#
+	# check block number i (int)
+	# return True in case of success
+	#
+	def __check_block(self,i):
+		try:
+			data = self.blocks[i].get_data()
+			if data['type'] == 'user':
+				username = data['name']
+				usertype = data['usertype']
+				if usertype == 'server':
+					servers_addr = data['address'] # [ host , port ]
+				else:
+					servers_addr = None
+				userkey = encrypt.import_public_key_from_str(data['key'])
+				if current_leader == None:
+					self.current_leader = username
+					self.current_leaders_key = userkey
+				
+				if i == 0:
+					prev_hash = ''
+				else:
+					prev_hash = self.blocks[i-1].get_hash()
+				if not self.blocks[i].check_signature(self.current_leader,self.current_leaders_key,prev_hash):
+					return False
+				
+				self.user_keys[username] = userkey
+				if usertype == 'server':
+					self.servers[username] = servers_addr
+			else:
+				new_leader = data['new_leader']
+				if new_leader not in self.user_keys:
+					return False
+				
+				if i == 0:
+					prev_hash = ''
+				else:
+					prev_hash = self.blocks[i-1].get_hash()
+				if not self.blocks[i].check_signature(self.current_leader,self.current_leaders_key,prev_hash):
+					return False
+
+				self.current_leader = new_leader
+				self.current_leaders_key = self.user_keys[new_leader]
+			return True
+		except:
+			return False
+
+	#
 	# check each block in chain
 	# return True if all right
 	# or number of first wrong block
 	#
 	def __check_chain(self):
 		for i in sorted(list(self.blocks.keys())):
-			try:
-				data = self.blocks[i].get_data()
-				if data['type'] == 'user':
-					username = data['name']
-					usertype = data['usertype']
-					if usertype == 'server':
-						servers_addr = data['address'] # [ host , port ]
-					else:
-						servers_addr = None
-					userkey = encrypt.import_public_key_from_str(data['key'])
-					if current_leader == None:
-						self.current_leader = username
-						self.current_leaders_key = userkey
-					
-					if i == 0:
-						prev_hash = ''
-					else:
-						prev_hash = self.blocks[i-1].get_hash()
-					if not self.blocks[i].check_signature(self.current_leader,self.current_leaders_key,prev_hash):
-						return i
-					
-					self.user_keys[username] = userkey
-					if usertype == 'server':
-						self.servers[username] = servers_addr
-				else:
-					new_leader = data['new_leader']
-					if new_leader not in self.user_keys:
-						return i
-					
-					if i == 0:
-						prev_hash = ''
-					else:
-						prev_hash = self.blocks[i-1].get_hash()
-					if not self.blocks[i].check_signature(self.current_leader,self.current_leaders_key,prev_hash):
-						return i
-
-					self.current_leader = new_leader
-					self.current_leaders_key = self.user_keys[new_leader]
-			except:
+			if not self.__check_block(i):
 				return i
 		return True
 
@@ -208,9 +218,53 @@ class Blockchain:
 				if not block.check_signature(author,self.user_keys[author],prev_hash):
 					return False
 				self.blocks[n] = block
+				self.__check_block(n)
+				self.save()
+				return True
 			else:
 				return False
 		except:
+			return False
+
+	#
+	# get's block , sign it with my private key and add to chain
+	# return True in case of success
+	# or False
+	#
+	def add_my_block(self,block,my_name,privkey):
+		try:
+			if not block.sign(my_name,privkey):
+				return False
+			if (block.get_number() == self.n):
+				self.blocks[n] = block
+				self.__check_block(self.n)
+				self.n += 1
+				self.save()
+				return True
+			else:
+				return False
+		except Exception as e:
+			self.log('ERROR: add_my_block : %s'%e)
+			return False
+
+	#
+	# create block with new user <=> registrate user
+	#
+	def add_new_user(self,key,peer,my_name,private,address = None):
+		try:
+			obj = {
+				'type':'user',
+				'usertype':'client',
+				'name':peer,
+				'key':key
+			}
+			if address != None:
+				obj['address'] = address
+				obj['usertype'] = 'server'
+			blck = Block(n=self.n,data=json.dumps(obj),prev_hash=self.last_hash(),hash_type='md5')
+			return self.add_my_block(blck,my_name,private)
+		except Exception as e:
+			self.log('ERROR: add_new_user : %s'%e)
 			return False
 
 	#
@@ -220,6 +274,13 @@ class Blockchain:
 	def save(self):
 		for i in sorted(list(self.blocks.keys())):
 			open(self.dir + '%s.blck'%(i),'w').write(self.blocks[i]._export())
+
+	#
+	# delete all blocks (from RAM)
+	#
+	def reset(self):
+		self.blocks = {}
+		self.n = 0
 
 	#
 	# return 'client' , 'server' or None
@@ -247,3 +308,18 @@ class Blockchain:
 			return self.servers[peer]
 		else:
 			return None
+
+	#
+	# return number of blocks
+	#
+	def count(self):
+		return self.n
+
+	#
+	# return hash of last block or empty str
+	#
+	def last_hash(self):
+		if self.n > 0:
+			return self.blocks[self.n-1].get_hash()
+		else:
+			return ''

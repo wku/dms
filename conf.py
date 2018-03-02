@@ -1,16 +1,14 @@
 ##################################################
 ###              GENERAL SETTINGS              ###
 ##################################################
+# host (str)
+host 					=	'127.0.0.1'
 # port (int)
 port 					=	8080
 # configuration dir (str)
 conf_dir				=	'config/'
 # main config with info about user account in JSON formate (str)
 conf_main				=	'main.json'
-# keeps pares <client_login> : <public_key_filename> (str)
-conf_clients			=	'clients.json'
-# keeps pares <server_login> : [ <host> , <port> ] (str)
-conf_peers				=	'peers.json'
 # directory where will be stored all blocks for blockchain (str)
 blockchain_dir			=	'blocks/'
 # directory where should be keys (str)
@@ -35,6 +33,8 @@ History_duration		=	24*3600
 ERROR_PART_ID			=	0
 # user-part-id (int)
 USER_PART_ID			=	1
+# login-key-service (int)
+LOGIN_KEY_SERVICE		=	2
 # blockchain-part-id (int)
 BLCKCHN_PART_ID			=	3
 # vote-part-id (int)
